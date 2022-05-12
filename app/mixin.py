@@ -98,3 +98,69 @@ class WeekCalendarMixin(BaseCalendarMixin):
             'week_last': last,
         }
         return calendar_data
+
+
+class WeekWithScheduleMixin(WeekCalendarMixin):
+    def get_week_schedules(self, start, end, days):
+        """각각의 날과 스케줄 반환"""
+        """{1日: [1日の全てのスケジュール], 
+            2日: [2日の全てのスケジュール],
+            3日: [2日の全てのスケジュール],
+            4日: [2日の全てのスケジュール],
+            5日: [2日の全てのスケジュール],
+            6日: [2日の全てのスケジュール],
+            7日: [2日の全てのスケジュール],}
+        """
+        # date__range: (1, 31)이렇게
+        lookup = {'{}__range'.format(self.date_field) : (start, end)}
+        # Schedule.objects.filter(date__range=(1, 31))
+        queryset = self.model.objects.filter(**lookup)
+
+        day_schedule = {day: [] for day in days}
+
+        for schedule in queryset:
+            schedule_date = getattr(schedule, self.date_field)
+            day_schedule[schedule_date].append(schedule)
+
+        return day_schedule
+
+    def get_week_calendar(self):
+        calendar_context = super().get_week_calendar()
+        calendar_context['week_day_schedules'] = self.get_week_schedules(
+            calendar_context['week_first'],
+            calendar_context['week_last'],
+            calendar_context['week_days']
+        )
+        return calendar_context
+
+
+class MonthWithScheduleMixin(MonthCalendarMixin):
+    def get_month_schedules(self, start, end, days):
+        lookup = {'{}__range'.format(self.date_field): (start, end)}
+        queryset = self.model.objects.filter(**lookup)
+
+        day_schedule = {day: [] for week in days for day in week}
+
+        for schedule in queryset:
+            schedule_date = getattr(schedule, self.date_field)
+            day_schedule[schedule_date].append(schedule)
+
+        size = len(day_schedule)
+        return [{key: day_schedule[key] for key in itertools.islice(day_schedule, i, i+7)} for i in range(0, size, 7)]
+
+    def get_month_calendar(self):
+        calendar_context = super().get_month_calendar()
+        # month_days = [[1,2,3,4,5,6,7], [8,9,10,11,12,13,14], [15,16,17,18,19,20,21],[][]] 이런식
+        month_days = calendar_context['month_days']
+        month_first = month_days[0][0]
+        month_last = month_days[-1][-1]
+        calendar_context['month_day_schedules'] = self.get_month_schedules(
+            month_first,
+            month_last,
+            month_days
+        )
+        return calendar_context
+
+
+
+
